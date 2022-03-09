@@ -29,6 +29,24 @@ def configuracao():
             'password': arquivo.get('GERAL', 'password')}
 
 
+def entradas(iqoapi, par, entrada, direcao, timeframe):
+    status, id = iqoapi.buy_digital_spot(par, entrada, direcao, timeframe)
+
+    if status:
+        while True:
+            status, valor = iqoapi.check_win_digital_v2(id) if operacao == 1 else iqoapi.buy(
+                        money, active, direcao, timeframe)
+
+            if status:
+                if valor > 0:
+                    return 'win', round(valor, 2)
+                else:
+                    return 'loss', round(valor, 2)
+                break
+    else:
+        return 'error', 0
+
+
 def mhi_strategy(iqoapi, active):
     # Define the number of digits of price and indicators
     max_dict = 6
@@ -103,32 +121,50 @@ def run_auto_bo(email, pwd, active, money):
             minutos = float(((datetime.now()).strftime('%M.%S'))[1:])
             # entrar = True if (4.58 <= minutos <= 5) or minutos >= 9.58 else False
             entrar = True
-
+            perda = money
             if entrar:
-                while win_count < 3:
-                    if direction:
-                        status, id = iqoapi.buy_digital_spot(active, money, direction,
-                                                             1) if operacao == 1 else iqoapi.buy(
-                            money, active, direction, 1)
 
-                    if status:
-                        while True:
-                            try:
-                                status, valor = iqoapi.check_win_digital_v2(
-                                    id) if operacao == 1 else iqoapi.check_win_v3(id)
-                            except:
-                                status = True
-                                valor = 0
+                if direction:
+                    status, id = iqoapi.buy_digital_spot(active, money, direction,
+                                                         1) if operacao == 1 else iqoapi.buy(
+                        money, active, direction, 1)
 
-                            if status:
-                                lucro += round(valor, 2)
-                                if valor > 0:
-                                    win_count += 1
-                                    money += valor
-                                elif valor <= 0:
-                                    win_count = 0
-                                    money = money / 2
-                                break
+                if status:
+                    while True:
+                        try:
+                            status, valor = iqoapi.check_win_digital_v2(
+                                id) if operacao == 1 else iqoapi.check_win_v3(id)
+                        except:
+                            status = True
+                            valor = 0
+
+                if status and valor < 0:
+                    for i in range(2):
+
+                        if lucro >= perda:
+                            break
+
+                        if direction:
+                            status, id = iqoapi.buy_digital_spot(active, (perda / 2) + lucro, direction,
+                                                                 1) if operacao == 1 else iqoapi.buy(
+                                money, active, direction, 1)
+
+                        if status:
+                            while True:
+                                try:
+                                    status, valor = iqoapi.check_win_digital_v2(
+                                        id) if operacao == 1 else iqoapi.check_win_v3(id)
+                                except:
+                                    status = True
+                                    valor = 0
+
+                                if status:
+                                    if valor > 0:
+                                        lucro += round(valor, 2)
+                                    else:
+                                        lucro = 0
+                                        perda += round(valor, 2) / 2
+                                        break
 
                     #       print('Resultado operação: ', end='')
                     #   print('WIN /' if valor > 0 else 'LOSS /', round(valor, 2), '/', round(lucro, 2),
@@ -144,7 +180,7 @@ if __name__ == '__main__':
     os.environ['MKL_DYNAMIC'] = 'FALSE'
 
     expiration = 5
-    actives = {expiration: ('EURUSD', 'EURGBP')}
+    actives = {expiration: ('EURUSD-OTC', 'EURGBP-OTC')}
 
     email = config['login']
     pwd = config['password']
