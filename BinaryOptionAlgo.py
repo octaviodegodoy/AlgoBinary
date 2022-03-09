@@ -62,15 +62,15 @@ def mhi_strategy(iqoapi, active):
 
     color_candles = 3
     if (cores.count('g') + cores.count('r')) == 6:
-        if cores.count('r') < color_candles and inputs['close'][5] < inputs['close'][4]:
+        if cores.count('r') < color_candles:
             direction = 'call'
-        elif cores.count('g') < color_candles and inputs['close'][5] > inputs['close'][4]:
+        elif cores.count('g') < color_candles:
             direction = 'put'
 
     return direction
 
 
-def run_auto_bo(email, pwd, active):
+def run_auto_bo(email, pwd, active, money):
     # Connect to IQOption
     iqoapi = IQ_Option(email, pwd)
     iqoapi.connect()
@@ -91,8 +91,48 @@ def run_auto_bo(email, pwd, active):
     print('Total balance ', balance)
     direction = mhi_strategy(iqoapi, active)
     print("deu direction ", direction)
+    lucro = 0
+    operacao = 1
+    print('Verificando se ha direction ')
+    direction = 'call'
+    win_count = 0
     if direction:
         print('Começa a brincadeira ', direction)
+
+        while True:
+            minutos = float(((datetime.now()).strftime('%M.%S'))[1:])
+            # entrar = True if (4.58 <= minutos <= 5) or minutos >= 9.58 else False
+            entrar = True
+
+            if entrar:
+                while win_count < 3:
+                    if direction:
+                        status, id = iqoapi.buy_digital_spot(active, money, direction,
+                                                             1) if operacao == 1 else iqoapi.buy(
+                            money, active, direction, 1)
+
+                    if status:
+                        while True:
+                            try:
+                                status, valor = iqoapi.check_win_digital_v2(
+                                    id) if operacao == 1 else iqoapi.check_win_v3(id)
+                            except:
+                                status = True
+                                valor = 0
+
+                            if status:
+                                lucro += round(valor, 2)
+                                if valor > 0:
+                                    win_count += 1
+                                    money += valor
+                                elif valor <= 0:
+                                    win_count = 0
+                                    money = money / 2
+                                break
+
+                    #       print('Resultado operação: ', end='')
+                    #   print('WIN /' if valor > 0 else 'LOSS /', round(valor, 2), '/', round(lucro, 2),
+                    #         ('/ ' + str(i) + ' GALE' if i > 0 else ''))
 
 
 # Carrega as configuracoes
@@ -104,11 +144,11 @@ if __name__ == '__main__':
     os.environ['MKL_DYNAMIC'] = 'FALSE'
 
     expiration = 5
-    actives = {expiration: (
-        'EURAUD-OTC', 'EURCAD-OTC', 'EURCHF-OTC', 'EURGBP-OTC')}
+    actives = {expiration: ('EURUSD', 'EURGBP')}
 
     email = config['login']
     pwd = config['password']
+    operacao = 1
 
     # Account type REAL, PRACTICE
     acc_type = 'PRACTICE'
@@ -117,4 +157,4 @@ if __name__ == '__main__':
 
     for expiration_time, active_list in actives.items():
         for active in active_list:
-            Process(target=run_auto_bo, args=(email, pwd, active)).start()
+            Process(target=run_auto_bo, args=(email, pwd, active, money)).start()
