@@ -1,0 +1,8 @@
+[GERAL]
+active = EURUSD
+
+sorosgale = S
+levels = 2
+
+login = login
+password = senha
