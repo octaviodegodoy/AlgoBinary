@@ -15,8 +15,21 @@ def money_amount():
     return 20
 
 
-def banca(iqoapi):
+def banca(par):
     return iqoapi.get_balance()
+
+
+def payout(iqoapi, par):
+    iqoapi.subscribe_strike_list(active, 1)
+    while True:
+        d = iqoapi.get_digital_current_profit(par, 1)
+        if d:
+            d = round(int(d) / 100, 2)
+            break
+        time.sleep(1)
+    iqoapi.unsubscribe_strike_list(par, 1)
+
+    return d
 
 
 def configuracao():
@@ -88,6 +101,10 @@ def mhi_strategy(iqoapi, active):
     return direction
 
 
+def get_initial_amount(iqoapi):
+    balance = banca(iqoapi)
+
+
 def run_auto_bo(email, pwd, active, money):
     print('Iniciando processamento para ', active)
     balance = banca(iqoapi)
@@ -152,12 +169,18 @@ if __name__ == '__main__':
     os.environ['MKL_DYNAMIC'] = 'FALSE'
 
     expiration = 5
-    actives = {expiration: ('EURUSD-OTC', 'EURGBP-OTC')}
+    actives = {expiration: ('EURUSD', 'EURGBP')}
+
+    amount_by_payout = {'74': '0,99', '75': '0,97', '76': '0,96', '77': '0,94', '78': '0,93', '79': '0,91',
+                        '80': '0,90', '81': '0,88', '82': '0,87', '83': '0,85', '84': '0,84', '85': '0,83',
+                        '86': '0,82', '87': '0,80', '88': '0,79', '89': '0,78', '90': '0,77', '91': '0,76',
+                        '92': '0,75', '93': '0,74', '94': '0,73', '95': '0,72', '96': '0,71', '97': '0,70',
+                        '98': '0,69', '99': '0,68', '100': '0:67'}
 
     email = config['login']
     pwd = config['password']
     operacao = 1
-
+    money = get_initial_amount()
     # Account type REAL, PRACTICE
     acc_type = 'PRACTICE'
 
