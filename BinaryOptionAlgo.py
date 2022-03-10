@@ -10,16 +10,11 @@ import threading
 logging.disable(level=logging.DEBUG)
 
 
-def money_amount():
-    # calculate based on balance
-    return 20
-
-
-def banca(par):
+def get_balance():
     return iqoapi.get_balance()
 
 
-def payout(iqoapi, par):
+def get_payout(iqoapi, par):
     iqoapi.subscribe_strike_list(active, 1)
     while True:
         d = iqoapi.get_digital_current_profit(par, 1)
@@ -101,13 +96,17 @@ def mhi_strategy(iqoapi, active):
     return direction
 
 
-def get_initial_amount(iqoapi):
-    balance = banca(iqoapi)
+def get_initial_amount(iqoapi, active):
+    balance = get_balance()
+    payout = str(get_payout(iqoapi, active))
+    initial_percent = float(amount_by_payout[payout]) / 100
+    return round(initial_percent*balance, 2)
 
 
-def run_auto_bo(email, pwd, active, money):
+
+def run_auto_bo(active, amount, iqoapi):
     print('Iniciando processamento para ', active)
-    balance = banca(iqoapi)
+    balance = get_balance()
     print('Total balance ', balance)
     direction = mhi_strategy(iqoapi, active)
     print("deu direction ", direction)
@@ -127,7 +126,7 @@ def run_auto_bo(email, pwd, active, money):
             if entrar:
 
                 if direction:
-                    status, valor = entradas(iqoapi, active, money, direction, 1)
+                    status, valor = entradas(iqoapi, active, amount, direction, 1)
 
                 if status and valor < 0:
                     for i in range(2):
@@ -171,23 +170,19 @@ if __name__ == '__main__':
     expiration = 5
     actives = {expiration: ('EURUSD', 'EURGBP')}
 
-    amount_by_payout = {'74': '0,99', '75': '0,97', '76': '0,96', '77': '0,94', '78': '0,93', '79': '0,91',
-                        '80': '0,90', '81': '0,88', '82': '0,87', '83': '0,85', '84': '0,84', '85': '0,83',
-                        '86': '0,82', '87': '0,80', '88': '0,79', '89': '0,78', '90': '0,77', '91': '0,76',
-                        '92': '0,75', '93': '0,74', '94': '0,73', '95': '0,72', '96': '0,71', '97': '0,70',
-                        '98': '0,69', '99': '0,68', '100': '0:67'}
+    amount_by_payout = {'0.74': '0.99', '0.75': '0.97', '0.76': '0.96', '0.77': '0.94', '0.78': '0.93', '0.79': '0.91',
+                        '0.80': '0.90', '0.81': '0.88', '0.82': '0.87', '0.83': '0.85', '0.84': '0.84', '0.85': '0.83',
+                        '0.86': '0.82', '0.87': '0.80', '0.88': '0.79', '0.89': '0.78', '0.90': '0.77', '0.91': '0.76',
+                        '0.92': '0.75', '0.93': '0.74', '0.94': '0.73', '0.95': '0.72', '0.96': '0.71', '0.97': '0.70',
+                        '0.98': '0.69', '0.99': '0.68', '100': '0.67'}
 
     email = config['login']
     pwd = config['password']
-    operacao = 1
-    money = get_initial_amount()
-    # Account type REAL, PRACTICE
-    acc_type = 'PRACTICE'
-
     # Connect to IQOption
     iqoapi = IQ_Option(email, pwd)
     iqoapi.connect()
-
+    # Account type REAL, PRACTICE
+    acc_type = 'PRACTICE'
     iqoapi.change_balance(acc_type)  # PRACTICE / REAL
 
     while True:
@@ -201,8 +196,12 @@ if __name__ == '__main__':
 
         time.sleep(1)
 
-    money = float(money_amount())
+
+    operacao = 1
+
+
 
     for expiration_time, active_list in actives.items():
         for active in active_list:
-            Process(target=run_auto_bo, args=(email, pwd, active, money, iqoapi)).start()
+            initial_amount = get_initial_amount(iqoapi, active)
+            Process(target=run_auto_bo, args=(active, initial_amount, iqoapi)).start()
