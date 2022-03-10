@@ -5,6 +5,7 @@ from dateutil import tz
 from multiprocessing import Process
 import os
 import numpy as np
+import threading
 
 logging.disable(level=logging.DEBUG)
 
@@ -30,21 +31,20 @@ def configuracao():
 
 
 def entradas(iqoapi, par, entrada, direcao, timeframe):
-    status, id = iqoapi.buy_digital_spot(par, entrada, direcao, timeframe)
+    status, id = iqoapi.buy_digital_spot(par, entrada, direcao, 1) if operacao == 1 else iqoapi.buy(
+        entrada, par, direcao, 1)
 
     if status:
         while True:
-            status, valor = iqoapi.check_win_digital_v2(id) if operacao == 1 else iqoapi.buy(
-                        money, active, direcao, timeframe)
-
+            status, valor = iqoapi.check_win_digital_v2(id) if operacao == 1 else iqoapi.check_win_v3(id)
             if status:
                 if valor > 0:
-                    return 'win', round(valor, 2)
+                    return status, round(valor, 2)
                 else:
-                    return 'loss', round(valor, 2)
+                    return status, round(valor, 2)
                 break
     else:
-        return 'error', 0
+        return False, 0
 
 
 def mhi_strategy(iqoapi, active):
@@ -89,21 +89,6 @@ def mhi_strategy(iqoapi, active):
 
 
 def run_auto_bo(email, pwd, active, money):
-    # Connect to IQOption
-    iqoapi = IQ_Option(email, pwd)
-    iqoapi.connect()
-
-    while True:
-        if iqoapi.check_connect() == False:
-            print('Connection error')
-
-            iqoapi.connect()
-        else:
-            print('\n\nConnection success!')
-            break
-
-        time.sleep(1)
-
     print('Iniciando processamento para ', active)
     balance = banca(iqoapi)
     print('Total balance ', balance)
@@ -125,18 +110,7 @@ def run_auto_bo(email, pwd, active, money):
             if entrar:
 
                 if direction:
-                    status, id = iqoapi.buy_digital_spot(active, money, direction,
-                                                         1) if operacao == 1 else iqoapi.buy(
-                        money, active, direction, 1)
-
-                if status:
-                    while True:
-                        try:
-                            status, valor = iqoapi.check_win_digital_v2(
-                                id) if operacao == 1 else iqoapi.check_win_v3(id)
-                        except:
-                            status = True
-                            valor = 0
+                    status, valor = entradas(iqoapi, active, money, direction, 1)
 
                 if status and valor < 0:
                     for i in range(2):
@@ -145,9 +119,7 @@ def run_auto_bo(email, pwd, active, money):
                             break
 
                         if direction:
-                            status, id = iqoapi.buy_digital_spot(active, (perda / 2) + lucro, direction,
-                                                                 1) if operacao == 1 else iqoapi.buy(
-                                money, active, direction, 1)
+                            status, id = entradas()
 
                         if status:
                             while True:
@@ -189,8 +161,25 @@ if __name__ == '__main__':
     # Account type REAL, PRACTICE
     acc_type = 'PRACTICE'
 
+    # Connect to IQOption
+    iqoapi = IQ_Option(email, pwd)
+    iqoapi.connect()
+
+    iqoapi.change_balance(acc_type)  # PRACTICE / REAL
+
+    while True:
+        if iqoapi.check_connect() == False:
+            print('Connection error')
+
+            iqoapi.connect()
+        else:
+            print('\n\nConnection success!')
+            break
+
+        time.sleep(1)
+
     money = float(money_amount())
 
     for expiration_time, active_list in actives.items():
         for active in active_list:
-            Process(target=run_auto_bo, args=(email, pwd, active, money)).start()
+            Process(target=run_auto_bo, args=(email, pwd, active, money, iqoapi)).start()
