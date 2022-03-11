@@ -10,19 +10,19 @@ import threading
 logging.disable(level=logging.DEBUG)
 
 
-def get_balance():
+def get_balance(iqoapi):
     return iqoapi.get_balance()
 
 
-def get_payout(iqoapi, par):
+def get_payout(iqoapi, active):
     iqoapi.subscribe_strike_list(active, 1)
     while True:
-        d = iqoapi.get_digital_current_profit(par, 1)
+        d = iqoapi.get_digital_current_profit(active, 1)
         if d:
             d = round(int(d) / 100, 2)
             break
         time.sleep(1)
-    iqoapi.unsubscribe_strike_list(par, 1)
+    iqoapi.unsubscribe_strike_list(active, 1)
 
     return d
 
@@ -38,7 +38,7 @@ def configuracao():
             'password': arquivo.get('GERAL', 'password')}
 
 
-def entradas(iqoapi, par, entrada, direcao, timeframe):
+def entradas(iqoapi, par, entrada, direcao, operacao):
     status, id = iqoapi.buy_digital_spot(par, entrada, direcao, 1) if operacao == 1 else iqoapi.buy(
         entrada, par, direcao, 1)
 
@@ -96,63 +96,73 @@ def mhi_strategy(iqoapi, active):
     return direction
 
 
-def get_initial_amount(iqoapi, active):
-    balance = get_balance()
+def get_initial_amount(iqoapi, active, amount_by_payout):
+    balance = get_balance(iqoapi)
     payout = str(get_payout(iqoapi, active))
     initial_percent = float(amount_by_payout[payout]) / 100
-    return round(initial_percent*balance, 2)
+    return round(initial_percent * balance, 2)
 
 
+def run_auto_bo(active, email, pwd):
+    # Connect to IQOption
+    iqoapi = IQ_Option(email, pwd)
+    iqoapi.connect()
+    # Account type REAL, PRACTICE
+    acc_type = 'PRACTICE'
+    iqoapi.change_balance(acc_type)  # PRACTICE / REAL
 
-def run_auto_bo(active, amount, iqoapi):
-    print('Iniciando processamento para ', active)
-    balance = get_balance()
-    print('Total balance ', balance)
-    direction = mhi_strategy(iqoapi, active)
-    print("deu direction ", direction)
-    lucro = 0
-    operacao = 1
-    print('Verificando se ha direction ')
-    direction = 'call'
-    win_count = 0
-    if direction:
-        print('Começa a brincadeira ', direction)
+    while True:
+        if not iqoapi.check_connect():
+            print('Connection error')
 
-        while True:
-            minutos = float(((datetime.now()).strftime('%M.%S'))[1:])
-            # entrar = True if (4.58 <= minutos <= 5) or minutos >= 9.58 else False
-            entrar = True
-            perda = money
-            if entrar:
+            iqoapi.connect()
+        else:
+            print('\n\nConnection success!')
+            break
 
-                if direction:
-                    status, valor = entradas(iqoapi, active, amount, direction, 1)
+        time.sleep(1)
 
+    amount_by_payout = {'0.74': '0.99', '0.75': '0.97', '0.76': '0.96', '0.77': '0.94', '0.78': '0.93', '0.79': '0.91',
+                        '0.80': '0.90', '0.81': '0.88', '0.82': '0.87', '0.83': '0.85', '0.84': '0.84', '0.85': '0.83',
+                        '0.86': '0.82', '0.87': '0.80', '0.88': '0.79', '0.89': '0.78', '0.90': '0.77', '0.91': '0.76',
+                        '0.92': '0.75', '0.93': '0.74', '0.94': '0.73', '0.95': '0.72', '0.96': '0.71', '0.97': '0.70',
+                        '0.98': '0.69', '0.99': '0.68', '100': '0.67'}
+    direction = None
+    while True:
+        print('Iniciando processamento para ', active)
+        initial_amount = get_initial_amount(iqoapi, active, amount_by_payout)
+        print('Initial amount ', initial_amount)
+        # direction = mhi_strategy(iqoapi, active)
+        print("deu direction ", direction)
+        lucro = 0
+        operacao = 1
+        print('Verificando se ha direction ')
+        direction = 'call'
+        win_count = 0
+        minutos = float(((datetime.now()).strftime('%M.%S'))[1:])
+        # entrar = True if (4.58 <= minutos <= 5) or minutos >= 9.58 else False
+        entrar = True
+        perda = 0
+
+        if entrar:
+            if direction:
+                status, valor = entradas(iqoapi, active, initial_amount, direction, 1)
                 if status and valor < 0:
-                    for i in range(2):
+                    perda = abs(valor)
 
+                    for i in range(2):
                         if lucro >= perda:
                             break
-
                         if direction:
-                            status, id = entradas()
+                            status, valor_soros = entradas(iqoapi, active, (perda / 2) + lucro, direction, 1)
 
                         if status:
-                            while True:
-                                try:
-                                    status, valor = iqoapi.check_win_digital_v2(
-                                        id) if operacao == 1 else iqoapi.check_win_v3(id)
-                                except:
-                                    status = True
-                                    valor = 0
+                            if valor_soros > 0:
+                                lucro += round(valor_soros, 2)
+                            else:
+                                lucro = 0
+                                perda += round(abs(valor_soros), 2) / 2
 
-                                if status:
-                                    if valor > 0:
-                                        lucro += round(valor, 2)
-                                    else:
-                                        lucro = 0
-                                        perda += round(valor, 2) / 2
-                                        break
 
                     #       print('Resultado operação: ', end='')
                     #   print('WIN /' if valor > 0 else 'LOSS /', round(valor, 2), '/', round(lucro, 2),
@@ -169,39 +179,9 @@ if __name__ == '__main__':
 
     expiration = 5
     actives = {expiration: ('EURUSD', 'EURGBP')}
-
-    amount_by_payout = {'0.74': '0.99', '0.75': '0.97', '0.76': '0.96', '0.77': '0.94', '0.78': '0.93', '0.79': '0.91',
-                        '0.80': '0.90', '0.81': '0.88', '0.82': '0.87', '0.83': '0.85', '0.84': '0.84', '0.85': '0.83',
-                        '0.86': '0.82', '0.87': '0.80', '0.88': '0.79', '0.89': '0.78', '0.90': '0.77', '0.91': '0.76',
-                        '0.92': '0.75', '0.93': '0.74', '0.94': '0.73', '0.95': '0.72', '0.96': '0.71', '0.97': '0.70',
-                        '0.98': '0.69', '0.99': '0.68', '100': '0.67'}
-
     email = config['login']
     pwd = config['password']
-    # Connect to IQOption
-    iqoapi = IQ_Option(email, pwd)
-    iqoapi.connect()
-    # Account type REAL, PRACTICE
-    acc_type = 'PRACTICE'
-    iqoapi.change_balance(acc_type)  # PRACTICE / REAL
-
-    while True:
-        if iqoapi.check_connect() == False:
-            print('Connection error')
-
-            iqoapi.connect()
-        else:
-            print('\n\nConnection success!')
-            break
-
-        time.sleep(1)
-
-
-    operacao = 1
-
-
 
     for expiration_time, active_list in actives.items():
         for active in active_list:
-            initial_amount = get_initial_amount(iqoapi, active)
-            Process(target=run_auto_bo, args=(active, initial_amount, iqoapi)).start()
+            Process(target=run_auto_bo, args=(active, email, pwd)).start()
