@@ -1,11 +1,9 @@
 from iqoptionapi.stable_api import IQ_Option
-import time, json, logging, configparser
+import time, logging, configparser
 from datetime import datetime, date, timedelta
-from dateutil import tz
 from multiprocessing import Process
 import os
 import numpy as np
-import threading
 
 logging.disable(level=logging.DEBUG)
 
@@ -103,6 +101,8 @@ def get_initial_amount(iqoapi, active, amount_by_payout):
     return round(initial_percent * balance, 2)
 
 
+
+
 def run_auto_bo(active, email, pwd):
     # Connect to IQOption
     iqoapi = IQ_Option(email, pwd)
@@ -110,6 +110,7 @@ def run_auto_bo(active, email, pwd):
     # Account type REAL, PRACTICE
     acc_type = 'PRACTICE'
     iqoapi.change_balance(acc_type)  # PRACTICE / REAL
+    operacao = 1
 
     while True:
         if not iqoapi.check_connect():
@@ -128,45 +129,43 @@ def run_auto_bo(active, email, pwd):
                         '0.92': '0.75', '0.93': '0.74', '0.94': '0.73', '0.95': '0.72', '0.96': '0.71', '0.97': '0.70',
                         '0.98': '0.69', '0.99': '0.68', '100': '0.67'}
     direction = None
+    lucro_total = 0
     while True:
         print('Iniciando processamento para ', active)
         initial_amount = get_initial_amount(iqoapi, active, amount_by_payout)
         print('Initial amount ', initial_amount)
-        # direction = mhi_strategy(iqoapi, active)
+        direction = mhi_strategy(iqoapi, active)
         print("deu direction ", direction)
-        lucro = 0
-        operacao = 1
-        print('Verificando se ha direction ')
-        direction = 'call'
-        win_count = 0
+        lucre_opera = 0
+
         minutos = float(((datetime.now()).strftime('%M.%S'))[1:])
-        # entrar = True if (4.58 <= minutos <= 5) or minutos >= 9.58 else False
-        entrar = True
-        perda = 0
+        entrar = True if (4.58 <= minutos <= 5) or minutos >= 9.58 else False
 
         if entrar:
-            if direction:
+            while True:
+                #verifica velas
                 status, valor = entradas(iqoapi, active, initial_amount, direction, 1)
+                lucro_total += valor
                 if status and valor < 0:
                     perda = abs(valor)
 
                     for i in range(2):
-                        if lucro >= perda:
+                        if lucre_opera >= perda:
                             break
                         if direction:
-                            status, valor_soros = entradas(iqoapi, active, (perda / 2) + lucro, direction, 1)
+
+                            status, valor_soros = entradas(iqoapi, active, (perda / 2) + lucre_opera, direction, 1)
 
                         if status:
                             if valor_soros > 0:
-                                lucro += round(valor_soros, 2)
+                                lucre_opera += round(valor_soros, 2)
                             else:
-                                lucro = 0
+                                lucre_opera = 0
                                 perda += round(abs(valor_soros), 2) / 2
 
-
-                    #       print('Resultado operação: ', end='')
-                    #   print('WIN /' if valor > 0 else 'LOSS /', round(valor, 2), '/', round(lucro, 2),
-                    #         ('/ ' + str(i) + ' GALE' if i > 0 else ''))
+                        print('Resultado operação: ', end='')
+                        print('WIN /' if valor > 0 else 'LOSS /', round(valor, 2), '/', round(lucre_opera, 2),
+                              ('/ ' + str(i) + ' GALE' if i > 0 else ''))
 
 
 # Carrega as configuracoes
@@ -178,7 +177,7 @@ if __name__ == '__main__':
     os.environ['MKL_DYNAMIC'] = 'FALSE'
 
     expiration = 5
-    actives = {expiration: ('EURUSD', 'EURGBP')}
+    actives = {expiration: ('EURUSD',)}
     email = config['login']
     pwd = config['password']
 
